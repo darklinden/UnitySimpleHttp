@@ -2,11 +2,11 @@ using UnityEngine;
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine.Networking;
 
 namespace SimpleHttp
 {
-
     public enum ReferenceHold : byte
     {
         WithScene = 0,
@@ -16,7 +16,65 @@ namespace SimpleHttp
     public enum HttpMethod : byte
     {
         GET = 0,
-        POST = 1
+        POST = 1,
+        DOWNLOAD = 2,
+        UPLOAD = 3
+    }
+
+    public enum HttpFileExistOption
+    {
+        Replace = 0,
+        Cancel = 2
+    }
+
+    public delegate void ProgressCallback(int current, int total, float progress);
+    public delegate void FinishedCallback(int downloaded);
+
+    public class HttpDownloadHandler : DownloadHandlerScript
+    {
+
+        private FileStream mFileStream;
+        private ProgressCallback mDownloadCallback;
+        private FinishedCallback mFinishedCallback;
+
+        public HttpDownloadHandler(FileStream fileStream, ProgressCallback downloadCallback, FinishedCallback finishedCallback)
+        {
+            mFileStream = fileStream;
+            mDownloadCallback = downloadCallback;
+            mFinishedCallback = finishedCallback;
+        }
+
+        private int totalLength = 0;
+        private int downloadedLength = 0;
+        protected override void CompleteContent()
+        {
+            if (null != mFinishedCallback)
+            {
+                mFinishedCallback(totalLength);
+            }
+        }
+
+        protected override float GetProgress()
+        {
+            return (float)downloadedLength / (float)totalLength;
+        }
+
+        protected override void ReceiveContentLength(int contentLength)
+        {
+            totalLength = contentLength;
+        }
+
+        protected override bool ReceiveData(byte[] data, int dataLength)
+        {
+            Debug.Log("ReceiveData: " + dataLength);
+            downloadedLength += dataLength;
+            mFileStream.Write(data, 0, dataLength);
+            if (null != mDownloadCallback)
+            {
+                mDownloadCallback(downloadedLength, totalLength, GetProgress());
+            }
+            return true;
+        }
     }
 
     /// <summary>
@@ -31,6 +89,10 @@ namespace SimpleHttp
         public int Timeout = 10;
         public System.Action<string, string, HttpSender> Completion;
         public ReferenceHold RefHold = ReferenceHold.WaitForComplete;
+        public ProgressCallback mProgressCallback;
+        public FinishedCallback mFinishedCallback;
+        public string FilePath = "";
+        public HttpFileExistOption ExistOption = HttpFileExistOption.Replace;
 
         public void Send()
         {
@@ -50,6 +112,9 @@ namespace SimpleHttp
                     break;
                 case HttpMethod.POST:
                     StartCoroutine(Post());
+                    break;
+                case HttpMethod.DOWNLOAD:
+                    StartCoroutine(Download());
                     break;
             }
         }
@@ -101,6 +166,7 @@ namespace SimpleHttp
         {
             UnityWebRequest www = UnityWebRequest.Post(Url, Data);
             www.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
             www.timeout = Timeout;
             yield return www.Send();
 
@@ -118,6 +184,60 @@ namespace SimpleHttp
                     Completion(www.downloadHandler.text, null, this);
                 }
             }
+
+            Destroy(this.gameObject);
+        }
+
+        IEnumerator Download()
+        {
+            var placePath = Path.Combine(Application.persistentDataPath, FilePath);
+
+            if (File.Exists(placePath))
+            {
+                switch (ExistOption)
+                {
+                    case HttpFileExistOption.Cancel:
+                        yield break;
+                    default:
+                        File.Delete(placePath);
+                        break;
+                }
+            }
+            else
+            {
+                string placeFolder = Path.GetDirectoryName(placePath);
+
+                if (!Directory.Exists(placeFolder))
+                {
+                    Directory.CreateDirectory(placeFolder);
+                }
+            }
+
+            string tempFilePath = Path.Combine(Application.temporaryCachePath, FilePath + ".tmp");
+
+            string tmpFolder = Path.GetDirectoryName(tempFilePath);
+
+            if (!Directory.Exists(tmpFolder))
+            {
+                Directory.CreateDirectory(tmpFolder);
+            }
+
+            FileInfo tempFileInfo = new FileInfo(tempFilePath);
+
+            using (FileStream fileStream = File.Open(tempFilePath, tempFileInfo.Exists ? FileMode.Append : FileMode.CreateNew))
+            {
+                using (UnityWebRequest request = new UnityWebRequest(Url, UnityWebRequest.kHttpVerbGET, new HttpDownloadHandler(fileStream, mProgressCallback, mFinishedCallback), null))
+                {
+                    if (tempFileInfo.Exists)
+                    {
+                        request.SetRequestHeader("RANGE", string.Format("bytes={0}-", tempFileInfo.Length));
+                    }
+                    yield return request.Send();
+                }
+            }
+
+            File.Move(tempFilePath, placePath);
+            File.Delete(tempFilePath);
 
             Destroy(this.gameObject);
         }
@@ -201,6 +321,32 @@ namespace SimpleHttp
         public static string Post(string URL_, string Data_, System.Action<string, string> CallBack_ = null)
         {
             return Instance.attachSender(URL_, Data_, HttpMethod.POST, defaultTimeout, defaultRefHold, CallBack_);
+        }
+
+        public static string Download(string URL_, string ToPath_, HttpFileExistOption existOpt, ProgressCallback progressCallback, FinishedCallback finishedCallback)
+        {
+            var guid = System.Guid.NewGuid().ToString();
+
+            GameObject go = new GameObject("HttpSender(" + HttpMethod.DOWNLOAD.ToString() + ")" + guid);
+            var sender = go.AddComponent<HttpSender>();
+            sender.GUID = guid;
+            sender.Url = URL_;
+            sender.Data = null;
+            sender.Method = HttpMethod.DOWNLOAD;
+            sender.Timeout = 60;
+            sender.RefHold = ReferenceHold.WaitForComplete;
+            sender.FilePath = ToPath_;
+            sender.mProgressCallback = progressCallback;
+            sender.mFinishedCallback = finishedCallback;
+            sender.ExistOption = existOpt;
+            sender.Completion = null;
+            if (!Instance._senders.ContainsKey(guid))
+            {
+                Instance._senders.Add(guid, sender);
+            }
+            sender.Send();
+
+            return guid;
         }
 
         public static void Cancel(string guid)
