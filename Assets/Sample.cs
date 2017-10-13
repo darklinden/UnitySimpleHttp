@@ -6,6 +6,8 @@ using SimpleHttp;
 public class Sample : MonoBehaviour
 {
 
+    public UnityEngine.UI.Image _img;
+
     public void ZTest(string url)
     {
         // Http.Get(url, null, (string result, string errMsg) =>
@@ -24,15 +26,23 @@ public class Sample : MonoBehaviour
         // });
 
         var desPath = "Test/icon.png";
-
-        Http.Download(url, desPath, HttpFileExistOption.Replace, (int current, int total, float progress) =>
+        Http.Download(url, desPath, HttpFileExistOption.Replace, (ulong current, ulong total, float progress) =>
         {
             Debug.Log("current: " + current + " total: " + total + " progress: " + progress);
         },
-        (int total) =>
+        (ulong total) =>
         {
             Debug.Log("total: " + total);
-            Debug.Log(System.IO.Path.Combine(Application.persistentDataPath, desPath));
+
+            var filePath = System.IO.Path.Combine(Application.persistentDataPath, desPath);
+            Debug.Log(filePath);
+
+            var t2d = new Texture2D(2, 2);
+            var b = System.IO.File.ReadAllBytes(filePath);
+            t2d.LoadImage(b);
+
+            var sp = Sprite.Create(t2d, new Rect(0, 0, t2d.width, t2d.height), new Vector2(0.5f, 0.5f));
+            _img.sprite = sp;
         });
     }
 }

@@ -27,8 +27,8 @@ namespace SimpleHttp
         Cancel = 2
     }
 
-    public delegate void ProgressCallback(int current, int total, float progress);
-    public delegate void FinishedCallback(int downloaded);
+    public delegate void ProgressCallback(ulong current, ulong total, float progress);
+    public delegate void FinishedCallback(ulong downloaded);
 
     public class HttpDownloadHandler : DownloadHandlerScript
     {
@@ -44,8 +44,8 @@ namespace SimpleHttp
             mFinishedCallback = finishedCallback;
         }
 
-        private int totalLength = 0;
-        private int downloadedLength = 0;
+        private ulong totalLength = 0;
+        private ulong downloadedLength = 0;
         protected override void CompleteContent()
         {
             if (null != mFinishedCallback)
@@ -61,13 +61,13 @@ namespace SimpleHttp
 
         protected override void ReceiveContentLength(int contentLength)
         {
-            totalLength = contentLength;
+            totalLength = (ulong)contentLength;
         }
 
         protected override bool ReceiveData(byte[] data, int dataLength)
         {
             Debug.Log("ReceiveData: " + dataLength);
-            downloadedLength += dataLength;
+            downloadedLength += (ulong)dataLength;
             mFileStream.Write(data, 0, dataLength);
             if (null != mDownloadCallback)
             {
@@ -224,20 +224,30 @@ namespace SimpleHttp
 
             FileInfo tempFileInfo = new FileInfo(tempFilePath);
 
-            using (FileStream fileStream = File.Open(tempFilePath, tempFileInfo.Exists ? FileMode.Append : FileMode.CreateNew))
+            FileStream fileStream = File.Open(tempFilePath, tempFileInfo.Exists ? FileMode.Append : FileMode.CreateNew);
+            UnityWebRequest request = new UnityWebRequest(Url, UnityWebRequest.kHttpVerbGET, new HttpDownloadHandler(fileStream, mProgressCallback, null), null);
+
+            if (tempFileInfo.Exists)
             {
-                using (UnityWebRequest request = new UnityWebRequest(Url, UnityWebRequest.kHttpVerbGET, new HttpDownloadHandler(fileStream, mProgressCallback, mFinishedCallback), null))
-                {
-                    if (tempFileInfo.Exists)
-                    {
-                        request.SetRequestHeader("RANGE", string.Format("bytes={0}-", tempFileInfo.Length));
-                    }
-                    yield return request.Send();
-                }
+                request.SetRequestHeader("RANGE", string.Format("bytes={0}-", tempFileInfo.Length));
             }
 
-            File.Move(tempFilePath, placePath);
-            File.Delete(tempFilePath);
+            yield return request.Send();
+
+            if (request.isNetworkError || request.isHttpError)
+            {
+                Debug.Log(request.error);
+            }
+            else if (request.isDone)
+            {
+                fileStream.Close();
+                File.Move(tempFilePath, placePath);
+                File.Delete(tempFilePath);
+                if (mFinishedCallback != null)
+                {
+                    mFinishedCallback(request.downloadedBytes);
+                }
+            }
 
             Destroy(this.gameObject);
         }
