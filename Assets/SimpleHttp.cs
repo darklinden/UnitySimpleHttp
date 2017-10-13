@@ -28,7 +28,7 @@ namespace SimpleHttp
     }
 
     public delegate void ProgressCallback(ulong current, ulong total, float progress);
-    public delegate void FinishedCallback(ulong downloaded);
+    public delegate void FinishedCallback(string errMsg);
 
     public class HttpDownloadHandler : DownloadHandlerScript
     {
@@ -50,7 +50,7 @@ namespace SimpleHttp
         {
             if (null != mFinishedCallback)
             {
-                mFinishedCallback(totalLength);
+                mFinishedCallback(null);
             }
         }
 
@@ -66,7 +66,7 @@ namespace SimpleHttp
 
         protected override bool ReceiveData(byte[] data, int dataLength)
         {
-            Debug.Log("ReceiveData: " + dataLength);
+            // Debug.Log("ReceiveData: " + dataLength);
             downloadedLength += (ulong)dataLength;
             mFileStream.Write(data, 0, dataLength);
             if (null != mDownloadCallback)
@@ -236,7 +236,7 @@ namespace SimpleHttp
 
             if (request.isNetworkError || request.isHttpError)
             {
-                Debug.Log(request.error);
+                mFinishedCallback(request.error);
             }
             else if (request.isDone)
             {
@@ -245,7 +245,7 @@ namespace SimpleHttp
                 File.Delete(tempFilePath);
                 if (mFinishedCallback != null)
                 {
-                    mFinishedCallback(request.downloadedBytes);
+                    mFinishedCallback(null);
                 }
             }
 
