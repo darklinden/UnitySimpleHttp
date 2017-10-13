@@ -164,7 +164,7 @@ namespace SimpleHttp
 
         IEnumerator Post()
         {
-            UnityWebRequest www = UnityWebRequest.Post(Url, Data);
+            UnityWebRequest www = new UnityWebRequest(Url, UnityWebRequest.kHttpVerbPOST, new DownloadHandlerBuffer(), new UploadHandlerRaw(vag.util.str2utf8(Data)));
             www.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 
             www.timeout = Timeout;
