@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
@@ -94,6 +95,12 @@ namespace SimpleHttp
         public string FilePath = "";
         public HttpFileExistOption ExistOption = HttpFileExistOption.Replace;
 
+        public static Int64 timestamp ()
+		{
+			var timestamp_ = Math.Floor ((DateTime.UtcNow.Subtract (new DateTime (1970, 1, 1))).TotalMilliseconds);
+			return (Int64)timestamp_;
+		}
+
         public void Send()
         {
             switch (RefHold)
@@ -139,6 +146,15 @@ namespace SimpleHttp
                 }
             }
 
+			if (url_.IndexOf ('?') == -1) {
+				url_ += "?";
+				url_ += "t" + timestamp () + "=0";
+			} else {
+				url_ = url_.TrimEnd ('&');
+				url_ += "&";
+				url_ += "t" + timestamp () + "=0";
+			}
+
             UnityWebRequest www = UnityWebRequest.Get(url_);
             www.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded");
             www.timeout = Timeout;
@@ -164,7 +180,17 @@ namespace SimpleHttp
 
         IEnumerator Post()
         {
-            UnityWebRequest www = new UnityWebRequest(Url, UnityWebRequest.kHttpVerbPOST, new DownloadHandlerBuffer(), new UploadHandlerRaw(vag.util.str2utf8(Data)));
+            var url_ = Url;
+			if (url_.IndexOf ('?') == -1) {
+				url_ += "?";
+				url_ += "t" + timestamp () + "=0";
+			} else {
+				url_ = url_.TrimEnd ('&');
+				url_ += "&";
+				url_ += "t" + timestamp () + "=0";
+			}
+
+            UnityWebRequest www = new UnityWebRequest(url_, UnityWebRequest.kHttpVerbPOST, new DownloadHandlerBuffer(), new UploadHandlerRaw(vag.util.str2utf8(Data)));
             www.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 
             www.timeout = Timeout;
@@ -225,7 +251,18 @@ namespace SimpleHttp
             FileInfo tempFileInfo = new FileInfo(tempFilePath);
 
             FileStream fileStream = File.Open(tempFilePath, tempFileInfo.Exists ? FileMode.Append : FileMode.CreateNew);
-            UnityWebRequest request = new UnityWebRequest(Url, UnityWebRequest.kHttpVerbGET, new HttpDownloadHandler(fileStream, mProgressCallback, null), null);
+
+            var url_ = Url;
+			if (url_.IndexOf ('?') == -1) {
+				url_ += "?";
+				url_ += "t" + timestamp () + "=0";
+			} else {
+				url_ = url_.TrimEnd ('&');
+				url_ += "&";
+				url_ += "t" + timestamp () + "=0";
+			}
+
+            UnityWebRequest request = new UnityWebRequest(url_, UnityWebRequest.kHttpVerbGET, new HttpDownloadHandler(fileStream, mProgressCallback, null), null);
 
             if (tempFileInfo.Exists)
             {
@@ -364,7 +401,7 @@ namespace SimpleHttp
             if (Instance._senders.ContainsKey(guid))
             {
                 var sender = Instance._senders[guid];
-                Object.Destroy(sender.gameObject);
+                UnityEngine.Object.Destroy(sender.gameObject);
                 Instance._senders.Remove(guid);
             }
         }
@@ -376,7 +413,7 @@ namespace SimpleHttp
             {
                 var guid = keys[i];
                 var sender = Instance._senders[guid];
-                Object.Destroy(sender.gameObject);
+                UnityEngine.Object.Destroy(sender.gameObject);
                 Instance._senders.Remove(guid);
             }
         }
